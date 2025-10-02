@@ -1,0 +1,253 @@
+<!DOCTYPE html>
+<html lang="bn">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>অ্যাটেনডেন্স রিপোর্ট (সুন্দর ডিজাইনসহ)</title>
+  <style>
+    body {
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      max-width: 650px;
+      margin: 30px auto;
+      background: #f0f4f8;
+      padding: 20px;
+      color: #333;
+    }
+    h1 {
+      text-align: center;
+      color: #004085;
+      margin-bottom: 25px;
+      text-shadow: 1px 1px 2px #a8c0ff;
+    }
+    label {
+      display: block;
+      margin-top: 15px;
+      font-weight: 600;
+      color: #0056b3;
+    }
+    input, select {
+      width: 100%;
+      padding: 10px 12px;
+      margin-top: 6px;
+      border: 1.5px solid #007bff;
+      border-radius: 6px;
+      font-size: 15px;
+      transition: border-color 0.3s ease;
+    }
+    input:focus, select:focus {
+      outline: none;
+      border-color: #0056b3;
+      box-shadow: 0 0 6px rgba(0, 86, 179, 0.4);
+    }
+    button {
+      margin-top: 25px;
+      padding: 12px 25px;
+      background-color: #007bff;
+      color: white;
+      border: none;
+      font-size: 16px;
+      cursor: pointer;
+      border-radius: 8px;
+      box-shadow: 0 4px 8px rgba(0,123,255,0.3);
+      transition: background-color 0.3s ease;
+      font-weight: 600;
+    }
+    button:hover {
+      background-color: #0056b3;
+      box-shadow: 0 6px 12px rgba(0,86,179,0.5);
+    }
+    #reportToggleBtn {
+      background-color: #28a745;
+      margin-left: 15px;
+      box-shadow: 0 4px 8px rgba(40,167,69,0.3);
+    }
+    #reportToggleBtn:hover {
+      background-color: #1e7e34;
+      box-shadow: 0 6px 12px rgba(30,126,52,0.5);
+    }
+    #report {
+      margin-top: 30px;
+      background: white;
+      padding: 20px 25px;
+      border-radius: 12px;
+      box-shadow: 0 8px 20px rgba(0,0,0,0.1);
+      max-height: 350px;
+      overflow-y: auto;
+      display: none; /* প্রথমে লুকানো থাকবে */
+    }
+    #report h2 {
+      text-align: center;
+      color: #004085;
+      margin-bottom: 15px;
+      text-shadow: 1px 1px 1px #a8c0ff;
+    }
+    #report ul {
+      list-style: none;
+      padding-left: 0;
+      margin: 0;
+    }
+    #report li {
+      padding: 10px 12px;
+      border-bottom: 1px solid #e2e8f0;
+      font-size: 15px;
+      color: #222;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      transition: background-color 0.2s ease;
+      border-radius: 6px;
+      margin-bottom: 6px;
+    }
+    #report li:hover {
+      background-color: #e9f1ff;
+    }
+    #report button.removeBtn {
+      background: #dc3545;
+      color: #fff;
+      border: none;
+      border-radius: 5px;
+      cursor: pointer;
+      padding: 6px 12px;
+      font-size: 13px;
+      font-weight: 600;
+      box-shadow: 0 2px 6px rgba(220,53,69,0.5);
+      transition: background-color 0.3s ease;
+    }
+    #report button.removeBtn:hover {
+      background-color: #b02a37;
+    }
+    /* Button container to align Submit and Report buttons side by side */
+    .btn-group {
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      margin-top: 20px;
+    }
+  </style>
+</head>
+<body>
+
+  <h1>অ্যাটেনডেন্স ফর্ম</h1>
+
+  <form id="attendanceForm">
+    <label for="course">কোর্স</label>
+    <input type="text" id="course" required placeholder="কোর্সের নাম লিখুন" />
+
+    <label for="name">নাম</label>
+    <input type="text" id="name" required placeholder="স্টুডেন্টের নাম লিখুন" />
+
+    <label for="date">তারিখ</label>
+    <input type="date" id="date" required />
+
+    <label for="presence">উপস্থিতি</label>
+    <select id="presence" required>
+      <option value="" disabled selected>বাছাই করুন</option>
+      <option value="উপস্থিত">উপস্থিত</option>
+      <option value="অনুপস্থিত">অনুপস্থিত</option>
+    </select>
+
+    <label for="videoWatched">ভিডিও দেখেছে?</label>
+    <select id="videoWatched" required>
+      <option value="" disabled selected>বাছাই করুন</option>
+      <option value="হ্যাঁ">হ্যাঁ</option>
+      <option value="না">না</option>
+    </select>
+
+    <div class="btn-group">
+      <button type="submit">সাবমিট করো</button>
+      <button type="button" id="reportToggleBtn">রিপোর্ট দেখাও</button>
+    </div>
+  </form>
+
+  <div id="report">
+    <h2>রিপোর্ট</h2>
+    <ul id="reportList"></ul>
+  </div>
+
+  <script>
+    const form = document.getElementById('attendanceForm');
+    const reportList = document.getElementById('reportList');
+    const reportDiv = document.getElementById('report');
+    const reportToggleBtn = document.getElementById('reportToggleBtn');
+
+    const STORAGE_KEY = 'attendanceRecords';
+
+    let attendanceRecords = JSON.parse(localStorage.getItem(STORAGE_KEY)) || [];
+
+    // শুরুতেই রিপোর্ট লোড করো কিন্তু লুকানো থাকবে
+    updateReport();
+
+    // সাবমিট ইভেন্ট
+    form.addEventListener('submit', function(e) {
+      e.preventDefault();
+
+      const course = document.getElementById('course').value.trim();
+      const name = document.getElementById('name').value.trim();
+      const date = document.getElementById('date').value;
+      const presence = document.getElementById('presence').value;
+      const videoWatched = document.getElementById('videoWatched').value;
+
+      attendanceRecords.push({ course, name, date, presence, videoWatched });
+
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(attendanceRecords));
+
+      updateReport();
+      form.reset();
+      
+      // রিপোর্ট দেখানোর ক্ষেত্রে স্বয়ংক্রিয় শো করাও
+      if (reportDiv.style.display === 'none' || reportDiv.style.display === '') {
+        toggleReport();
+      }
+    });
+
+    // রিপোর্ট আপডেট ফাংশন
+    function updateReport() {
+      reportList.innerHTML = '';
+
+      if (attendanceRecords.length === 0) {
+        reportList.innerHTML = '<p style="text-align:center; color:#666;">কোন তথ্য নেই</p>';
+        return;
+      }
+
+      attendanceRecords.forEach((record, index) => {
+        const li = document.createElement('li');
+        li.innerHTML = `
+          <span>
+            <strong>কোর্স:</strong> ${record.course} | 
+            <strong>নাম:</strong> ${record.name} | 
+            <strong>তারিখ:</strong> ${record.date} | 
+            <strong>উপস্থিতি:</strong> ${record.presence} | 
+            <strong>ভিডিও দেখেছে:</strong> ${record.videoWatched}
+          </span>
+          <button class="removeBtn" onclick="removeRecord(${index})">মুছো</button>
+        `;
+        reportList.appendChild(li);
+      });
+    }
+
+    // রেকর্ড মুছার ফাংশন
+    function removeRecord(index) {
+      attendanceRecords.splice(index, 1);
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(attendanceRecords));
+      updateReport();
+    }
+
+    // রিপোর্ট দেখানোর/লুকানোর ফাংশন
+    function toggleReport() {
+      if (reportDiv.style.display === 'none' || reportDiv.style.display === '') {
+        reportDiv.style.display = 'block';
+        reportToggleBtn.textContent = 'রিপোর্ট লুকাও';
+      } else {
+        reportDiv.style.display = 'none';
+        reportToggleBtn.textContent = 'রিপোর্ট দেখাও';
+      }
+    }
+
+    // রিপোর্ট টগল বাটনে ইভেন্ট লাগাও
+    reportToggleBtn.addEventListener('click', toggleReport);
+
+    // ফাংশনগুলো গ্লোবালি দেখতে হবে কারণ onclick এ ইউজ করলাম
+    window.removeRecord = removeRecord;
+  </script>
+</body>
+</html>
