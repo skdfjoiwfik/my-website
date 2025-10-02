@@ -123,6 +123,29 @@
       align-items: center;
       margin-top: 20px;
     }
+
+    /* ছোট নোটিফিকেশন বার */
+    .notice {
+      text-align: center;
+      margin-top: 12px;
+      color: #155724;
+      background: #d4edda;
+      padding: 8px 12px;
+      border-radius: 6px;
+      display: none;
+      border: 1px solid #c3e6cb;
+    }
+    .notice.error {
+      color: #721c24;
+      background: #f8d7da;
+      border: 1px solid #f5c6cb;
+    }
+
+    @media (max-width: 420px) {
+      body { margin: 12px; padding: 14px; }
+      .btn-group { flex-direction: column; gap: 10px; }
+      #reportToggleBtn { margin-left: 0; }
+    }
   </style>
 </head>
 <body>
@@ -159,6 +182,8 @@
     </div>
   </form>
 
+  <div class="notice" id="notice"></div>
+
   <div id="report">
     <h2>রিপোর্ট</h2>
     <ul id="reportList"></ul>
@@ -169,12 +194,33 @@
     const reportList = document.getElementById('reportList');
     const reportDiv = document.getElementById('report');
     const reportToggleBtn = document.getElementById('reportToggleBtn');
+    const notice = document.getElementById('notice');
 
     const STORAGE_KEY = 'attendanceRecords';
+    // ====== এখানে আপনার পাসওয়ার্ড দিন ======
+    const REPORT_PASSWORD = "1234";
+    // =======================================
 
+    // localStorage থেকে রেকর্ড নাও
     let attendanceRecords = JSON.parse(localStorage.getItem(STORAGE_KEY)) || [];
 
-    // শুরুতেই রিপোর্ট লোড করো কিন্তু লুকানো থাকবে
+    // যদি সেশন-অথেন্টিকেটেড হয়ে থাকো (একটি ট্যাব/সেশন পর্যন্ত), সেটি চেক কর
+    function isAuthenticated() {
+      return sessionStorage.getItem('attendance_auth') === 'true';
+    }
+
+    // ইউজারকে সংক্ষিপ্ত নোটিশ দেখাও
+    function showNotice(message, isError = false, timeout = 2500) {
+      notice.textContent = message;
+      notice.className = 'notice' + (isError ? ' error' : '');
+      notice.style.display = 'block';
+      clearTimeout(window._noticeTimer);
+      window._noticeTimer = setTimeout(() => {
+        notice.style.display = 'none';
+      }, timeout);
+    }
+
+    // শুরুতে রিপোর্ট আপডেট করো (কিন্তু লুকিয়ে থাকবে)
     updateReport();
 
     // সাবমিট ইভেন্ট
@@ -190,13 +236,17 @@
       attendanceRecords.push({ course, name, date, presence, videoWatched });
 
       localStorage.setItem(STORAGE_KEY, JSON.stringify(attendanceRecords));
-
       updateReport();
       form.reset();
-      
-      // রিপোর্ট দেখানোর ক্ষেত্রে স্বয়ংক্রিয় শো করাও
-      if (reportDiv.style.display === 'none' || reportDiv.style.display === '') {
-        toggleReport();
+
+      showNotice('✅ সফলভাবে যোগ করা হয়েছে');
+
+      // যদি আগে থেকেই অথেন্টিকেটেড থাকে, রিপোর্ট অটোমেটিক দেখাও
+      if (isAuthenticated()) {
+        if (reportDiv.style.display === 'none' || reportDiv.style.display === '') {
+          reportDiv.style.display = 'block';
+          reportToggleBtn.textContent = 'রিপোর্ট লুকাও';
+        }
       }
     });
 
@@ -211,32 +261,82 @@
 
       attendanceRecords.forEach((record, index) => {
         const li = document.createElement('li');
+
+        // ডেটা সুন্দর দেখানোর জন্য date format চাইলে এখানে পরিবর্তন করা যাবে
         li.innerHTML = `
           <span>
-            <strong>কোর্স:</strong> ${record.course} | 
-            <strong>নাম:</strong> ${record.name} | 
-            <strong>তারিখ:</strong> ${record.date} | 
-            <strong>উপস্থিতি:</strong> ${record.presence} | 
-            <strong>ভিডিও দেখেছে:</strong> ${record.videoWatched}
+            <strong>কোর্স:</strong> ${escapeHtml(record.course)} | 
+            <strong>নাম:</strong> ${escapeHtml(record.name)} | 
+            <strong>তারিখ:</strong> ${escapeHtml(record.date)} | 
+            <strong>উপস্থিতি:</strong> ${escapeHtml(record.presence)} | 
+            <strong>ভিডিও দেখেছে:</strong> ${escapeHtml(record.videoWatched)}
           </span>
-          <button class="removeBtn" onclick="removeRecord(${index})">মুছো</button>
+          <button class="removeBtn" data-index="${index}">মুছো</button>
         `;
         reportList.appendChild(li);
       });
+
+      // remove বাটনগুলোর ইভেন্ট হ্যান্ডলার যোগ করো (auth চেকসহ)
+      const removeButtons = reportList.querySelectorAll('.removeBtn');
+      removeButtons.forEach(btn => {
+        btn.addEventListener('click', function() {
+          const idx = parseInt(this.getAttribute('data-index'), 10);
+          // ডিলিট করার আগে যাচাই করো যে ইউজার অথেন্টিকেটেড কি না
+          if (!isAuthenticated()) {
+            showNotice('🔒 রিপোর্ট মুছতে পাসওয়ার্ড দরকার', true);
+            return;
+          }
+          const confirmDelete = confirm('মুছতে চান? এটি স্থায়ী হবে।');
+          if (confirmDelete) {
+            removeRecord(idx);
+            showNotice('🗑️ রেকর্ড মুছা হয়েছে');
+          }
+        });
+      });
     }
 
-    // রেকর্ড মুছার ফাংশন
+    // টেক্সট ইনজেকশন থেকে রক্ষা করার জন্য ছোট ফাংশন
+    function escapeHtml(text) {
+      if (!text) return '';
+      return text
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#039;");
+    }
+
+    // রেকর্ড মুছার ফাংশন (auth আগে চেক করা হয়)
     function removeRecord(index) {
       attendanceRecords.splice(index, 1);
       localStorage.setItem(STORAGE_KEY, JSON.stringify(attendanceRecords));
       updateReport();
     }
 
-    // রিপোর্ট দেখানোর/লুকানোর ফাংশন
+    // রিপোর্ট দেখানোর/লুকানোর ফাংশন (পাসওয়ার্ড সহ, এবং সেশন-ভিত্তিক মনে রাখবে)
     function toggleReport() {
       if (reportDiv.style.display === 'none' || reportDiv.style.display === '') {
-        reportDiv.style.display = 'block';
-        reportToggleBtn.textContent = 'রিপোর্ট লুকাও';
+        // যদি আগে থেকেই অথেন্টিকেটেড না থাকো, পাসওয়ার্ড চাও
+        if (!isAuthenticated()) {
+          const userPassword = prompt("🔑 রিপোর্ট দেখতে পাসওয়ার্ড দিন:");
+          if (userPassword === null) {
+            // ইউজার Cancel করলে কিছু না করো
+            return;
+          }
+          if (userPassword === REPORT_PASSWORD) {
+            // সেশন-অথেন্টিকেশন সেট করো (এই ট্যাব/সেশন পর্যন্ত থাকবে)
+            sessionStorage.setItem('attendance_auth', 'true');
+            showNotice('✅ সফল অথেনটিকেশন — রিপোর্ট দেখানো হচ্ছে');
+            reportDiv.style.display = 'block';
+            reportToggleBtn.textContent = 'রিপোর্ট লুকাও';
+          } else {
+            showNotice('❌ ভুল পাসওয়ার্ড!', true);
+          }
+        } else {
+          // আগে থেকেই অথেন্টিকেটেড থাকলে সরাসরি শো করো
+          reportDiv.style.display = 'block';
+          reportToggleBtn.textContent = 'রিপোর্ট লুকাও';
+        }
       } else {
         reportDiv.style.display = 'none';
         reportToggleBtn.textContent = 'রিপোর্ট দেখাও';
@@ -246,8 +346,18 @@
     // রিপোর্ট টগল বাটনে ইভেন্ট লাগাও
     reportToggleBtn.addEventListener('click', toggleReport);
 
-    // ফাংশনগুলো গ্লোবালি দেখতে হবে কারণ onclick এ ইউজ করলাম
-    window.removeRecord = removeRecord;
+    // পেজ লোডে যদি সেশন ইতিমধ্যে অথেন্টিকেটেড থাকে, কিন্তু reportDiv hidden থাকে, তখন টেক্সটে পরিবর্তন করা যায়
+    (function adjustToggleTextOnLoad() {
+      if (isAuthenticated() && (reportDiv.style.display === 'block')) {
+        reportToggleBtn.textContent = 'রিপোর্ট লুকাও';
+      } else {
+        reportToggleBtn.textContent = 'রিপোর্ট দেখাও';
+      }
+    })();
+
+    // window এ removeRecord দরকার নেই কারণ আমরা ইনলাইন onclick আর ব্যবহার করিনি
+    // কিন্তু যদি প্রয়োজন হয়, নিচেরটি আনকোমেন্ট করতে পারেন:
+    // window.removeRecord = removeRecord;
   </script>
 </body>
 </html>
